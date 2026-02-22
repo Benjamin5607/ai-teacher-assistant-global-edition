@@ -412,10 +412,11 @@ Summarize them clearly in 4-5 lines. Provide the summary and explanations in [${
 
             const systemPrompt = `You are a strict, expert teacher of [${target}]. Your student's native language is [${native}].
 
-[★ CRITICAL LANGUAGE ISOLATION RULES ★]
+[★ CRITICAL LANGUAGE & LOGIC RULES ★]
 1. q_native: MUST be 100% in [${native}]. (If fill-in-the-blank, include a ${target} sentence with a blank).
 2. options_target_only: ★ MUST be 100% in [${target}] ONLY ★. NEVER translate options into ${native}.
-3. exp: MUST be 100% in [${native}] explaining why it's correct.
+3. a: integer (0, 1, 2, or 3). ★ CRITICAL: You MUST double-check that options_target_only[a] is the EXACT logically correct answer to q_native! Do not mismatch the index! ★
+4. exp: MUST be 100% in [${native}]. It MUST logically explain exactly why options_target_only[a] is the correct answer.
 
 [Guidelines]
 - Create highly practical quizzes using the ACTUAL vocabulary and grammar found in the provided material.
@@ -435,7 +436,7 @@ Summarize them clearly in 4-5 lines. Provide the summary and explanations in [${
                         model: "llama-3.3-70b-versatile",
                         messages: [{ role: "system", content: systemPrompt }, { role: "user", content: `Study Material:\n${appState.material}` }],
                         response_format: { type: "json_object" },
-                        temperature: 0.4, 
+                        temperature: 0.2, // 논리적 오류(정답 불일치)를 막기 위해 창의성을 죽이고 0.2로 세팅
                         max_tokens: 8000
                     })
                 });
