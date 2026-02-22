@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Global AI Teacher Assistant</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <script src='https://unpkg.com/tesseract.js@5.0.2/dist/tesseract.min.js'></script> 
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script> 
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.4.21/mammoth.browser.min.js"></script> 
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script> 
+
+    <style>
+        .correct { background-color: #10b981 !important; color: white; border-color: #10b981; }
+        .wrong { background-color: #ef4444 !important; color: white; border-color: #ef4444; }
+        .tab-btn.active { background-color: #3b82f6; color: white; border-color: #3b82f6; }
+    </style>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen">
+    <div class="max-w-md mx-auto p-6 space-y-6">
+        <header class="text-center relative">
+            <h1 class="text-3xl font-black text-blue-400">Omni-Tutor 🌍</h1>
+            <p class="text-slate-400 text-sm">Learn Any Language, Anywhere.</p>
+        </header>
+
+        <details class="bg-slate-800 rounded-xl border border-blue-500/50" open>
+            <summary class="p-3 text-sm text-blue-300 cursor-pointer font-bold">⚙️ Setup: API & Languages</summary>
+            <div class="p-4 space-y-4 border-t border-slate-700">
+                <div>
+                    <label class="block text-xs text-slate-400 mb-1">Groq API Key</label>
+                    <input type="password" id="apiKey" placeholder="Enter Groq API Key" class="w-full bg-slate-900 border border-slate-600 rounded-lg p-2 text-sm focus:border-blue-500">
+                </div>
+                <div class="flex gap-3">
+                    <div class="flex-1">
+                        <label class="block text-xs text-slate-400 mb-1">My Native Language</label>
+                        <select id="nativeLang" class="w-full bg-slate-900 border border-slate-600 rounded-lg p-2 text-sm focus:border-blue-500" onchange="saveSettings()"></select>
+                    </div>
+                    <div class="flex-1">
+                        <label class="block text-xs text-slate-400 mb-1">I Want to Learn</label>
+                        <select id="targetLang" class="w-full bg-slate-900 border border-slate-600 rounded-lg p-2 text-sm focus:border-blue-500" onchange="saveSettings()"></select>
+                    </div>
+                </div>
+                <button onclick="simulateNextDay()" class="w-full bg-slate-700 p-2 rounded text-xs text-slate-300 hover:bg-slate-600 transition">[Test] +1 Day Time Machine</button>
+            </div>
+        </details>
+
+        <section class="bg-slate-800 p-5 rounded-2xl shadow-xl border border-slate-700">
+            <h2 class="text-sm font-bold text-blue-400 mb-3">📈 Weekly Progress</h2>
+            <div class="bg-slate-900 p-4 rounded-xl border border-slate-700 mb-3">
+                <div class="flex justify-between text-xs text-slate-400 mb-2">
+                    <span>Study Days: <span id="progDays" class="text-white font-bold text-sm">0</span> / 7</span>
+                    <span>Accuracy: <span id="progRate" class="text-white font-bold text-sm">0</span>%</span>
+                </div>
+                <div class="w-full bg-slate-700 rounded-full h-2.5 mb-3 overflow-hidden">
+                    <div id="progBar" class="bg-gradient-to-r from-blue-500 to-purple-500 h-2.5 rounded-full transition-all duration-500" style="width: 0%"></div>
+                </div>
+                <p id="progMessage" class="text-xs text-slate-400 italic text-center">No record yet. Upload a new material!</p>
+            </div>
+            
+            <button onclick="generateWeeklyReport()" id="reportBtn" class="w-full bg-purple-600 hover:bg-purple-500 p-3 rounded-xl font-bold transition-all shadow-lg text-sm hidden">
+                📊 Get Weekly Report & Nagging
+            </button>
+        </section>
+
+        <section id="currentStudySection" class="hidden bg-slate-800 p-5 rounded-2xl shadow-xl border border-red-500/50">
+            <h2 class="text-sm font-bold text-red-400 mb-2">🔥 Current Target & Quota</h2>
+            <div id="savedMaterialBox" class="text-xs text-slate-300 bg-slate-900 p-3 rounded-lg border border-slate-700 mb-4 h-24 overflow-y-auto leading-relaxed"></div>
+            
+            <div class="flex justify-between items-center text-sm mb-2">
+                <span class="text-slate-300">Daily Base:</span><span class="text-blue-400 font-bold">10 Qs</span>
+            </div>
+            <div class="flex justify-between items-center text-sm mb-4">
+                <span class="text-slate-300">Missed Penalty:</span><span id="penaltyCount" class="text-red-400 font-bold">0 Qs</span>
+            </div>
+            <button onclick="generateQuiz()" id="genBtn" class="w-full bg-blue-600 hover:bg-blue-500 p-4 rounded-xl font-bold transition-all text-white shadow-lg">
+                🚀 Generate <span id="btnQuizCount">10</span> Quizzes
+            </button>
+        </section>
+
+        <details id="uploadDetails" class="bg-slate-800 rounded-xl border border-slate-700" open>
+            <summary class="p-3 text-xs text-slate-400 cursor-pointer font-bold">📁 Upload New Material (Reset Progress)</summary>
+            
+            <div class="border-t border-slate-700 text-sm flex">
+                <button onclick="switchTab('text')" id="tab-text" class="tab-btn active flex-1 py-3 text-center text-slate-400 hover:text-white transition">📝 Text</button>
+                <button onclick="switchTab('file')" id="tab-file" class="tab-btn flex-1 py-3 text-center text-slate-400 hover:text-white transition">📸 File</button>
+            </div>
+            
+            <div class="p-4">
+                <div id="input-text" class="block">
+                    <textarea id="textContent" rows="3" class="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-sm text-slate-300 focus:outline-none focus:border-blue-500" placeholder="Paste text here to study..."></textarea>
+                    <button onclick="processInput('text')" class="w-full mt-3 bg-blue-600 hover:bg-blue-500 p-3 rounded-xl font-bold transition-all shadow-lg text-sm text-white">Extract & Start New Week</button>
+                </div>
+
+                <div id="input-file" class="hidden space-y-4">
+                    <label class="block cursor-pointer group">
+                        <div class="bg-slate-900 border border-dashed border-slate-500 group-hover:border-blue-500 p-6 rounded-xl text-center transition-all">
+                            <span class="block text-2xl mb-2">📸 / 📄</span>
+                            <span class="text-xs text-slate-400 group-hover:text-blue-400">Photo / Document<br>(PDF, Word, Excel etc.)</span>
+                        </div>
+                        <input type="file" id="fileInput" accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.json" capture="environment" class="hidden">
+                    </label>
+                </div>
+            </div>
+        </details>
+
+        <div id="loadingStatus" class="hidden text-center text-sm font-bold text-yellow-400 animate-pulse bg-slate-800 p-4 rounded-xl border border-yellow-500/50">Processing... Please wait!</div>
+        
+        <div id="naggingSection" class="hidden bg-red-900/40 p-6 rounded-2xl border border-red-500/50 shadow-xl">
+            <h3 class="text-xl font-bold text-red-400 mb-2">🤬 Teacher's Feedback</h3>
+            <div id="naggingText" class="text-sm text-slate-200 leading-relaxed whitespace-pre-wrap"></div>
+        </div>
+
+        <div id="quizContainer" class="space-y-6 pb-10"></div>
+    </div>
+
+    <div id="closingModal" class="hidden fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+        <div class="bg-slate-800 rounded-2xl p-6 max-w-md w-full border border-purple-500/50 shadow-2xl">
+            <h3 class="text-xl font-bold text-purple-400 mb-3">🛑 Final Review</h3>
+            <div class="bg-slate-900 p-4 rounded-xl mb-5 h-48 overflow-y-auto">
+                <p id="closingReportText" class="text-sm text-slate-300 leading-relaxed whitespace-pre-wrap"></p>
+            </div>
+            <div class="flex gap-3">
+                <button onclick="cancelReset()" class="flex-1 bg-slate-600 hover:bg-slate-500 p-3 rounded-xl text-sm font-bold text-white transition">Cancel</button>
+                <button onclick="confirmResetAndProcess()" class="flex-1 bg-blue-600 hover:bg-blue-500 p-3 rounded-xl text-sm font-bold text-white transition shadow-lg">Accept & Reset</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
+
+        // [신규] 글로벌 언어 팩 & Tesseract 언어 매핑
+        const languagePack = [
+            { id: "English", label: "🇺🇸 English", ocr: "eng" },
+            { id: "Korean", label: "🇰🇷 Korean (한국어)", ocr: "kor" },
+            { id: "Vietnamese", label: "🇻🇳 Vietnamese", ocr: "vie" },
+            { id: "Malay", label: "🇲🇾 Malay (Bahasa Melayu)", ocr: "msa" },
+            { id: "Japanese", label: "🇯🇵 Japanese (日本語)", ocr: "jpn" },
+            { id: "Chinese", label: "🇨🇳 Chinese (中文)", ocr: "chi_sim" },
+            { id: "Spanish", label: "🇪🇸 Spanish (Español)", ocr: "spa" },
+            { id: "French", label: "🇫🇷 French (Français)", ocr: "fra" },
+            { id: "German", label: "🇩🇪 German (Deutsch)", ocr: "deu" },
+            { id: "Italian", label: "🇮🇹 Italian (Italiano)", ocr: "ita" },
+            { id: "Portuguese", label: "🇵🇹 Portuguese", ocr: "por" },
+            { id: "Dutch", label: "🇳🇱 Dutch (Nederlands)", ocr: "nld" },
+            { id: "Swedish", label: "🇸🇪 Swedish (Svenska)", ocr: "swe" },
+            { id: "Polish", label: "🇵🇱 Polish (Polski)", ocr: "pol" },
+            { id: "Turkish", label: "🇹🇷 Turkish (Türkçe)", ocr: "tur" },
+            { id: "Russian", label: "🇷🇺 Russian (Русский)", ocr: "rus" },
+            { id: "Arabic", label: "🇸🇦 Arabic (العربية)", ocr: "ara" },
+            { id: "Hindi", label: "🇮🇳 Hindi (हिन्दी)", ocr: "hin" }
+        ];
+
+        // 상태 관리
+        let appState = JSON.parse(localStorage.getItem('omni_tutor_state')) || {
+            material: "", 
+            lastLoginDate: new Date().toDateString(),
+            missedDays: 0,
+            quizHistory: [],
+            nativeLang: "Korean",
+            targetLang: "English"
+        };
+
+        const apiKeyInput = document.getElementById('apiKey');
+        const nativeLangSelect = document.getElementById('nativeLang');
+        const targetLangSelect = document.getElementById('targetLang');
+        
+        let currentTotalQuizzes = 10;
+        let scoreCounter = 0;
+        let pendingNewRawText = ""; 
+
+        // 언어 드롭다운 동적 렌더링
+        function renderLanguageOptions() {
+            let optionsHTML = languagePack.map(lang => `<option value="${lang.id}">${lang.label}</option>`).join('');
+            nativeLangSelect.innerHTML = optionsHTML;
+            targetLangSelect.innerHTML = optionsHTML;
+            
+            nativeLangSelect.value = appState.nativeLang;
+            targetLangSelect.value = appState.targetLang;
+        }
+
+        function saveState() { 
+            appState.nativeLang = nativeLangSelect.value;
+            appState.targetLang = targetLangSelect.value;
+            localStorage.setItem('omni_tutor_state', JSON.stringify(appState)); 
+        }
+
+        function saveSettings() { saveState(); }
+
+        function switchTab(tabId) {
+            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active', 'text-white'));
+            document.getElementById(`tab-${tabId}`).classList.add('active', 'text-white');
+            document.getElementById('input-text').classList.add('hidden');
+            document.getElementById('input-file').classList.add('hidden');
+            document.getElementById(`input-${tabId}`).classList.remove('hidden');
+        }
+
+        // 초기화
+        function initApp() {
+            renderLanguageOptions();
+            apiKeyInput.value = localStorage.getItem('groq_key') || '';
+
+            const today = new Date().toDateString();
+            if (appState.material && appState.lastLoginDate !== today) {
+                const daysDiff = Math.floor((new Date(today) - new Date(appState.lastLoginDate)) / (1000 * 60 * 60 * 24));
+                if (daysDiff > 0) {
+                    appState.missedDays += daysDiff;
+                    appState.lastLoginDate = today;
+                    saveState();
+                }
+            }
+
+            if (appState.material) {
+                document.getElementById('currentStudySection').classList.remove('hidden');
+                document.getElementById('savedMaterialBox').innerText = appState.material;
+                document.getElementById('uploadDetails').removeAttribute('open');
+            } else {
+                document.getElementById('currentStudySection').classList.add('hidden');
+                document.getElementById('uploadDetails').setAttribute('open', '');
+            }
+
+            currentTotalQuizzes = Math.min(10 + (appState.missedDays * 10), 30);
+            document.getElementById('penaltyCount').innerText = `${appState.missedDays * 10}`;
+            document.getElementById('btnQuizCount').innerText = currentTotalQuizzes;
+
+            updateProgressUI();
+            
+            if (appState.quizHistory.length >= 7 || appState.missedDays >= 7) {
+                document.getElementById('reportBtn').classList.remove('hidden');
+            }
+        }
+
+        function updateProgressUI() {
+            const history = appState.quizHistory;
+            const daysStudied = history.length;
+            let totalQ = 0, totalCorrect = 0;
+
+            history.forEach(h => { totalQ += h.total; totalCorrect += h.score; });
+            const accuracy = totalQ === 0 ? 0 : Math.round((totalCorrect / totalQ) * 100);
+            const progressPercent = Math.min((daysStudied / 7) * 100, 100);
+
+            document.getElementById('progDays').innerText = daysStudied;
+            document.getElementById('progRate').innerText = accuracy;
+            document.getElementById('progBar').style.width = `${progressPercent}%`;
+
+            const progMessage = document.getElementById('progMessage');
+            if (daysStudied === 0) progMessage.innerText = "Need new learning material!";
+            else if (daysStudied < 7) progMessage.innerText = `Keep going! ${7 - daysStudied} days left.`;
+            else {
+                progMessage.innerText = "🎉 Weekly goal achieved! Check your report below.";
+                progMessage.classList.add('text-blue-400');
+            }
+        }
+
+        // --- 지능형 다국어 파일 파서 ---
+        document.getElementById('fileInput').onchange = async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            showLoading("⏳ Extracting text...");
+            let rawText = "";
+
+            try {
+                const ext = file.name.split('.').pop().toLowerCase();
+                if (file.type.startsWith('image/')) {
+                    // [핵심] 사용자가 선택한 타겟 언어의 Tesseract 코드를 찾아 적용
+                    const targetInfo = languagePack.find(l => l.id === appState.targetLang) || languagePack[0];
+                    const ocrLang = `eng+${targetInfo.ocr}`; // 영어는 기본 베이스로 깔고 타겟 언어 혼합
+                    
+                    showLoading(`⏳ Downloading ${appState.targetLang} OCR Module & Extracting...`);
+                    const result = await Tesseract.recognize(file, ocrLang); 
+                    rawText = result.data.text;
+                } else if (ext === 'pdf') {
+                    const arrayBuffer = await file.arrayBuffer();
+                    const pdf = await pdfjsLib.getDocument({data: arrayBuffer}).promise;
+                    for (let i = 1; i <= pdf.numPages; i++) {
+                        const page = await pdf.getPage(i);
+                        const textContent = await page.getTextContent();
+                        rawText += textContent.items.map(item => item.str).join(' ') + " ";
+                    }
+                } else if (ext === 'docx' || ext === 'doc') {
+                    const arrayBuffer = await file.arrayBuffer();
+                    const result = await mammoth.extractRawText({arrayBuffer: arrayBuffer});
+                    rawText = result.value;
+                } else if (['xls', 'xlsx', 'csv'].includes(ext)) {
+                    const arrayBuffer = await file.arrayBuffer();
+                    const workbook = XLSX.read(arrayBuffer, {type: 'array'});
+                    rawText = XLSX.utils.sheet_to_csv(workbook.Sheets[workbook.SheetNames[0]]);
+                } else {
+                    rawText = await file.text();
+                }
+
+                if(rawText.trim().length < 5) throw new Error("Not enough text");
+                checkResetCondition(rawText);
+
+            } catch (err) {
+                hideLoading();
+                alert("Error reading file or downloading language pack.");
+            }
+        };
+
+        function processInput(type) {
+            if(type === 'text') {
+                const text = document.getElementById('textContent').value;
+                if(!text.trim()) return alert("Please enter text!");
+                checkResetCondition(text);
+            }
+        }
+
+        async function checkResetCondition(rawText) {
+            pendingNewRawText = rawText; 
+            if (appState.quizHistory.length === 0) {
+                confirmResetAndProcess();
+                return;
+            }
+
+            const key = apiKeyInput.value;
+            if (!key) return alert("Please enter API Key!");
+            localStorage.setItem('groq_key', key);
+
+            showLoading("👨‍🏫 Evaluating previous progress...");
+            
+            const historyText = appState.quizHistory.map(h => `- ${h.date}: ${h.score}/${h.total} correct`).join('\n');
+            const systemPrompt = `You are a strict teacher. The student is changing their study material.
+Based on their history, write a harsh but encouraging feedback in [${appState.nativeLang}]. Limit to 1000 characters.`;
+
+            try {
+                const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+                    method: "POST",
+                    headers: { "Authorization": `Bearer ${key}`, "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        model: "llama-3.3-70b-versatile",
+                        messages: [{ role: "system", content: systemPrompt }, { role: "user", content: `Missed days: ${appState.missedDays}\nHistory:\n${historyText}` }],
+                        temperature: 0.7 
+                    })
+                });
+
+                const data = await res.json();
+                hideLoading();
+                
+                document.getElementById('closingReportText').innerText = data.choices[0].message.content;
+                document.getElementById('closingModal').classList.remove('hidden');
+
+            } catch (err) {
+                hideLoading();
+                confirmResetAndProcess();
+            }
+        }
+
+        function cancelReset() {
+            document.getElementById('closingModal').classList.add('hidden');
+            pendingNewRawText = "";
+        }
+
+        async function confirmResetAndProcess() {
+            document.getElementById('closingModal').classList.add('hidden');
+            const key = apiKeyInput.value;
+            
+            showLoading("🤖 Analyzing new material...");
+
+            const systemPrompt = `You are an expert ${appState.targetLang} teacher. 
+Extract the core vocabulary, essential grammar, and key phrases from the text the student wants to learn. 
+Summarize them clearly in 4-5 lines. Provide the summary and explanations in [${appState.nativeLang}]. (No JSON)`;
+
+            try {
+                const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+                    method: "POST",
+                    headers: { "Authorization": `Bearer ${key}`, "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        model: "llama-3.3-70b-versatile",
+                        messages: [{ role: "system", content: systemPrompt }, { role: "user", content: pendingNewRawText.substring(0, 3000) }],
+                        temperature: 0.3
+                    })
+                });
+                
+                const data = await res.json();
+                
+                appState.material = data.choices[0].message.content;
+                appState.missedDays = 0;
+                appState.quizHistory = [];
+                appState.lastLoginDate = new Date().toDateString();
+                saveState();
+                
+                hideLoading();
+                document.getElementById('naggingSection').classList.add('hidden'); 
+                document.getElementById('quizContainer').innerHTML = ''; 
+                pendingNewRawText = "";
+                
+                alert("✅ New material saved. Progress reset!");
+                initApp(); 
+
+            } catch (err) {
+                hideLoading();
+                alert("Error analyzing new material.");
+            }
+        }
+
+        // --- 동적 퀴즈 생성 로직 ---
+        async function generateQuiz() {
+            const key = apiKeyInput.value;
+            if (!key) return alert("API Key check!");
+
+            const genBtn = document.getElementById('genBtn');
+            genBtn.innerText = `👨‍🏫 Generating ${currentTotalQuizzes} Quizzes... ⏳`;
+            genBtn.disabled = true;
+            document.getElementById('quizContainer').innerHTML = '';
+            scoreCounter = 0;
+
+            const target = appState.targetLang;
+            const native = appState.nativeLang;
+
+            const systemPrompt = `You are a strict, expert teacher of [${target}]. Your student's native language is [${native}].
+
+[★ CRITICAL LANGUAGE ISOLATION RULES ★]
+1. q_native: MUST be 100% in [${native}]. (If fill-in-the-blank, include a ${target} sentence with a blank).
+2. options_target_only: ★ MUST be 100% in [${target}] ONLY ★. NEVER translate options into ${native}.
+3. exp: MUST be 100% in [${native}] explaining why it's correct.
+
+[Guidelines]
+- Create highly practical quizzes using the ACTUAL vocabulary and grammar found in the provided material.
+- Do NOT create meta-questions (e.g., "Read the book", "Listen to teacher"). Focus on the actual language content.
+- Mix Situational questions, Fill-in-the-blanks, and Intent analysis.
+- Provide plausible distractors (wrong answers) in [${target}].
+- Generate EXACTLY ${currentTotalQuizzes} questions.
+
+[JSON Structure]
+{ "questions": [ { "q_native": "...", "options_target_only": ["${target}","${target}","${target}","${target}"], "a": 0, "exp": "..." } ] }`;
+
+            try {
+                const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+                    method: "POST",
+                    headers: { "Authorization": `Bearer ${key}`, "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        model: "llama-3.3-70b-versatile",
+                        messages: [{ role: "system", content: systemPrompt }, { role: "user", content: `Study Material:\n${appState.material}` }],
+                        response_format: { type: "json_object" },
+                        temperature: 0.4, 
+                        max_tokens: 8000
+                    })
+                });
+
+                const data = await res.json();
+                const json = JSON.parse(data.choices[0].message.content);
+                renderQuiz(json.questions);
+            } catch (err) {
+                alert("Error generating quiz.");
+            } finally {
+                genBtn.innerText = `🚀 Generate ${currentTotalQuizzes} Quizzes`;
+                genBtn.disabled = false;
+            }
+        }
+
+        function renderQuiz(questions) {
+            const container = document.getElementById('quizContainer');
+            questions.forEach((q, qIdx) => {
+                const qDiv = document.createElement('div');
+                qDiv.className = "bg-slate-800 p-5 rounded-2xl border border-slate-700 shadow-lg animate-fade-in";
+                let optionsHtml = q.options_target_only.map((opt, oIdx) => `
+                    <button onclick="handleAnswer(this, ${qIdx}, ${oIdx}, ${q.a}, '${q.exp.replace(/'/g, "\\'")}', ${questions.length})" 
+                            class="w-full text-left p-4 rounded-xl bg-slate-900 border border-slate-700 hover:border-blue-500 mb-2 font-medium">
+                        ${oIdx + 1}. ${opt}
+                    </button>
+                `).join('');
+                qDiv.innerHTML = `
+                    <p class="font-bold text-lg mb-4 text-blue-100">${qIdx + 1}. ${q.q_native}</p>
+                    <div id="q-${qIdx}-options">${optionsHtml}</div>
+                    <div id="q-${qIdx}-feedback" class="hidden mt-3 text-xs p-4 rounded-xl bg-slate-900 border-l-4 border-blue-500 text-slate-300"></div>
+                `;
+                container.appendChild(qDiv);
+            });
+        }
+
+        function handleAnswer(btn, qIdx, selected, correct, explanation, totalQ) {
+            const optionsDiv = document.getElementById(`q-${qIdx}-options`);
+            const feedbackDiv = document.getElementById(`q-${qIdx}-feedback`);
+            optionsDiv.querySelectorAll('button').forEach(b => b.disabled = true);
+
+            if (selected === correct) {
+                btn.classList.add('correct');
+                feedbackDiv.innerHTML = `<span class="text-emerald-400 text-base">✅ <strong>Correct!</strong></span><br><br>${explanation}`;
+                scoreCounter++;
+            } else {
+                btn.classList.add('wrong');
+                optionsDiv.querySelectorAll('button')[correct].classList.add('correct');
+                feedbackDiv.innerHTML = `<span class="text-red-400 text-base">❌ <strong>Wrong!</strong></span><br><br>${explanation}`;
+            }
+            feedbackDiv.classList.remove('hidden');
+
+            if (document.querySelectorAll('.correct, .wrong').length === totalQ) {
+                appState.quizHistory.push({ date: new Date().toDateString(), score: scoreCounter, total: totalQ });
+                appState.missedDays = 0;
+                appState.lastLoginDate = new Date().toDateString(); 
+                saveState();
+                
+                setTimeout(() => {
+                    alert(`Good job! ${scoreCounter}/${totalQ} correct.\nProgress updated.`);
+                    initApp(); 
+                    document.getElementById('quizContainer').innerHTML = ''; 
+                }, 1000);
+            }
+        }
+
+        async function generateWeeklyReport() {
+            const key = apiKeyInput.value;
+            const btn = document.getElementById('reportBtn');
+            btn.innerText = "🤬 Generating feedback... ⏳";
+            btn.disabled = true;
+
+            const historyText = appState.quizHistory.map(h => `- ${h.date}: ${h.score}/${h.total} correct`).join('\n');
+            const systemPrompt = `You are a strict teacher. 
+Based on the student's weekly record, write a detailed feedback (nagging + advice) in [${appState.nativeLang}]. Limit to 1000 characters.`;
+
+            try {
+                const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+                    method: "POST",
+                    headers: { "Authorization": `Bearer ${key}`, "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        model: "llama-3.3-70b-versatile",
+                        messages: [{ role: "system", content: systemPrompt }, { role: "user", content: `Missed days: ${appState.missedDays}\nHistory:\n${historyText}` }],
+                        temperature: 0.7 
+                    })
+                });
+
+                const data = await res.json();
+                document.getElementById('naggingSection').classList.remove('hidden');
+                document.getElementById('naggingText').innerText = data.choices[0].message.content;
+                
+                if(confirm("Read the feedback? Resetting this week's progress.")) {
+                    appState.quizHistory = [];
+                    appState.missedDays = 0;
+                    saveState();
+                    initApp();
+                }
+            } catch (err) { alert("Error generating report."); } 
+            finally { btn.innerText = "📊 Get Weekly Report & Nagging"; btn.disabled = false; }
+        }
+
+        function showLoading(msg) { document.getElementById('loadingStatus').innerText = msg; document.getElementById('loadingStatus').classList.remove('hidden'); }
+        function hideLoading() { document.getElementById('loadingStatus').classList.add('hidden'); }
+        function simulateNextDay() {
+            appState.lastLoginDate = new Date(new Date().getTime() - (24 * 60 * 60 * 1000)).toDateString(); 
+            saveState(); location.reload();
+        }
+
+        initApp();
+    </script>
+</body>
+</html>
